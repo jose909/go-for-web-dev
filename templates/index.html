@@ -1,15 +1,47 @@
-<!DOCTYPE html>
 <html>
-<head>
-	<title>Go</title>
-</head>
-<body>
-	<p> Holaaa, {{.Name}}</p>
-	{{if .DBStatus}}
-		 <p>Haaaaaaaay conexión a DB! :D </p>
-	{{else}}
-		 <p>Nooooooo hay conexión! :'(</p>
-	{{end}}
+  <head></head>
+  <body>
+    <form onsubmit="return false;" id="search-form">
+      <input name="search" />
+      <input type="submit" value="Search" onclick="submitSearch()" />
+    </form>
 
-	</body>
+    <br />
+    <br />
+
+    <table width="100%">
+      <thead>
+        <tr style="text-align: left;">
+          <th width="40%">Title</th>
+          <th width="30%">Author</th>
+          <th width="10%">Year</th>
+          <th width="20%">ID</th>
+        </tr>
+      </thead>
+      <tbody id="search-results">
+      </tbody>
+    </table>
+
+    <script type="text/javascript" src="http://code.jquery.com/jquery-2.1.4.min.js"></script>
+    <script type="text/javascript">
+      function submitSearch() {
+        $.ajax({
+          url: "/search",
+          method: "POST",
+          data: $("#search-form").serialize(),
+          success: function(results) {
+            var parsed = JSON.parse(results);
+            var searchResults = $("#search-results");
+            searchResults.empty();
+            for (var i = 0; i < parsed.length; ++i) {
+              var result = parsed[i];
+              var row = $("<tr><td>" + result.Title + "</td><td>" + result.Author + "</td><td>" + result.Year + "</td><td>" + result.ID + "</td></tr>");
+              searchResults.append(row);
+            }
+          }
+        });
+        return false;
+      };
+    </script>
+  </body>
 </html>
