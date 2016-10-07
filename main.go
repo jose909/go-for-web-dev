@@ -2,21 +2,24 @@ package main
 
 import (
   
+
   "net/http"
 
-  _ "github.com/mattn/go-sqlite3"
   "database/sql"
+  _ "github.com/mattn/go-sqlite3"
   "gopkg.in/gorp.v1"
 
   "encoding/json"
   "net/url"
-  "encoding/xml"
   "io/ioutil"
+  "encoding/xml"
   "strconv"
 
   "github.com/urfave/negroni"
+  "github.com/goincremental/negroni-sessions"
+  "github.com/goincremental/negroni-sessions/cookiestore"
   "github.com/yosssi/ace"
-  gmux "github.com/gorilla/mux"
+	gmux "github.com/gorilla/mux"
 )
 
 type Book struct{
@@ -61,11 +64,36 @@ func verifyDatabase(w http.ResponseWriter, r *http.Request, next http.HandlerFun
 	next(w, r)
 }
 
+func getBookCollection(books *[]Book, sortCol string, w http.ResponseWriter) bool {
+  if sortCol != "title" && sortCol != "author" && sortCol != "classification" {
+    sortCol = "pk"
+  }
+  if _, err := dbmap.Select(books, "select * from books order by " + sortCol); err != nil {
+    http.Error(w, err.Error(), http.StatusInternalServerError)
+    return false
+  }
+  return true
+}
+
 func main() {
 
   initDB()
 
   mux := gmux.NewRouter()
+
+  mux.HandleFunc("/books", func(w http.ResponseWriter, r *http.Request) {
+    var b []Book
+    if !getBookCollection(&b, r.FormValue("sortBy"), w) {
+      return
+    }
+
+    sessions.GetSession(r).Set("SortBy", r.FormValue("sortBy"))
+
+    if err := json.NewEncoder(w).Encode(b); err != nil {
+      http.Error(w, err.Error(), http.StatusInternalServerError)
+      return
+    }
+  }).Methods("GET")
 
   mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
   	template, err := ace.Load("templates/index", "", nil) 
@@ -74,11 +102,15 @@ func main() {
 
   	}
 
+   var sortColumn string
+    if sortBy := sessions.GetSession(r).Get("SortBy"); sortBy != nil {
+      sortColumn = sortBy.(string)
+    }
+
    p := Page{Books: []Book{}}
-    if _, err = dbmap.Select(&p.Books, "select * from books"); err != nil {
-     http.Error(w, err.Error(), http.StatusInternalServerError)
-      return
-     }
+    if !getBookCollection(&p.Books, sortColumn, w) {
+    	return
+    }
 
     if err = template.Execute(w, p); err != nil {
       http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -134,6 +166,7 @@ func main() {
   	}).Methods("DELETE")
 
   n := negroni.Classic()
+  n.Use(sessions.Sessions("my_session", cookiestore.New([]byte("my-secret-123"))))
   n.Use(negroni.HandlerFunc(verifyDatabase))
   n.UseHandler(mux)
   n.Run(":8080")
